@@ -3,6 +3,17 @@ name: slow-surgical-coding
 description: "Implement features in deliberately small, human-approved stages instead of one large change: a Change Manifest followed by eight reviewable stages — scaffold, state, integration points, signatures, call sites, existing-type changes, bodies, verification — each ending with a review ritual and an explicit 'Awaiting approval for stage N' stop. Use when the user asks to work slowly or surgically, stage a feature, scaffold before implementing, review each step, or act as architect/reviewer; triggers include 'slow surgical coding', 'one stage at a time', 'go slow', 'small reviewable increments', 'don't implement it all at once', 'scaffold first', or 'staged implementation'."
 ---
 
+## CRITICAL EXECUTION OVERRIDES
+1. **EXECUTION_MODE:** `STRICT_INCREMENTAL_STATE_MACHINE`
+2. **HARD TERMINATION RULE:** After printing the required Stage Output, end the turn IMMEDIATELY. Outputting text, code, or explanation for Stage N+1 in the same response as Stage N is a FATAL PROTOCOL VIOLATION.
+3. **STRICT PREVENTATIVE BOUNDARIES:**
+   - DO NOT write function bodies or logic before Stage 7.
+   - DO NOT combine stages into a single response under any circumstance.
+   - DO NOT proceed to the next stage unless the user prompt contains an explicit approval key (`approve`, `approve with notes`, `revise`, `replan`, `stop`).
+4. **STATE CONTROL:** If the user prompt is anything other than explicit approval, treat it as feedback for the current stage, remain in the current stage, and re-issue the updated stage artifact with the review footer.
+
+---
+
 # Skill: Slow Surgical Coding
 
 ## Purpose
@@ -13,30 +24,61 @@ The agent must never rush from requirements to complete implementation.
 The human is the architect and reviewer.
 The agent is a careful junior engineer who proposes, explains, and waits.
 
-## Absolute rules
+## Absolute Rules
 
-1. Never write implementation bodies before the approved scaffold exists.
-2. Never modify more than one anatomical layer per stage.
-3. Every stage ends with:
-   - a short diff summary,
-   - the reason for each change,
-   - explicit questions if anything is ambiguous,
-   - the command: `Awaiting approval for stage N: <name>.`
-4. If a later stage reveals a flaw in an earlier approved stage, stop.
-   Do not silently repair it. Propose a `REVISION` stage.
-5. Prefer compilation errors, TODOs, and commented-out call sites over
-   half-implemented logic.
-6. Keep every stage small enough that the human can review it in under
-   2–5 minutes.
-7. Do not create tests automatically unless the human asks for them.
-8. Do not refactor unrelated code.
-9. Do not invent requirements, APIs, naming, or architecture.
-10. If the task cannot be safely divided into these stages, say so and
-    propose a custom stage plan first.
+1. **Scaffold First:** Write only empty definitions in Stage 1. Implementation bodies are strictly forbidden prior to Stage 7.
+2. **Single Layer Scope:** Modify exactly one anatomical layer per stage response.
+3. **Mandatory Halts:** End every single stage output with the standardized **Review Footer** and halt output immediately.
+4. **Discovered Flaws Protocol:** If a later stage reveals an issue in an earlier approved stage, HALT. Do not silently fix it. Issue a `REVISION` proposal to return to the earlier stage.
+5. **Fail-Safe Artifacts:** Prefer compilation errors, TODOs, and commented-out call sites over incomplete or guessed logic.
+6. **Review Bounds:** Keep every stage output small enough for human review in under 2–5 minutes.
+7. **No Unrequested Tests:** Generate test cases only when explicitly requested by the human.
+8. **Scope Isolation:** Do not refactor unrelated code.
+9. **Zero Invention:** Do not invent requirements, APIs, naming, or architecture.
+10. **Plan Adaptation:** If a task cannot safely fit this 8-stage pipeline, declare this immediately and propose a custom stage plan before producing code.
 
-## Development comment format
+## Review & Approval Protocol
 
-Every new or changed declaration must carry a development comment:
+Every stage output MUST conclude with this exact structure:
+
+```text
+### Stage N: <name>
+
+**What changed**
+- <file>: <change>
+
+**Why**
+- <reason>
+
+**What intentionally did not change**
+- <list>
+
+**Questions**
+- <question or "none">
+
+**Developer's Log**
+> <1-2 sentences of flavor text>
+
+**Next stage**
+- <name and one-sentence description>
+
+STATUS: WAITING_FOR_HUMAN_APPROVAL
+STAGE: <N> (<Name>)
+Awaiting approval for stage N: <name>.
+```
+
+*(Output MUST terminate immediately after printing `Awaiting approval for stage N: <name>.`)*
+
+### Human Response Handling
+- `approve` → Advance state to Stage N+1.
+- `approve with notes: ...` → Advance state to Stage N+1 while applying notes.
+- `revise: ...` → Re-generate Stage N incorporating requested fixes.
+- `replan: ...` → Return to Change Manifest state.
+- `stop` → Terminate workflow and print current state summary.
+
+## Development Comment Format
+
+Every new or changed declaration MUST include a structured `DEV` comment block:
 
 ```rust
 /// DEV: [stage 2/state]
@@ -47,20 +89,20 @@ Every new or changed declaration must carry a development comment:
 pub last_valid_session: Option<Session>,
 ```
 
-Required fields:
+Required fields for all languages (using standard language comment syntax):
+- `DEV`: `<stage_number>/<anatomical_layer>`
+- `Purpose`: Brief explanation of existence.
+- `Owner flow`: Creation, mutation, read, or cleanup path.
+- `Open question`: Uncertainty requiring human resolution (or "None").
+- `TODO(stage N)`: Targeted stage for completion.
 
-- `DEV`: stage and anatomical layer.
-- `Purpose`: why this exists.
-- `Owner flow`: who creates, mutates, reads, or removes it.
-- `Open question`: uncertainty the human should resolve, if any.
-- `TODO(stage N)`: the future implementation point, if any.
+---
 
-For non-doc-comment languages, use the project’s normal comment syntax,
-but preserve the same fields.
+## Stage Execution Pipeline
 
-## Stage plan
+### Pre-Stage 0 — Change Manifest
 
-Before any code, produce a **Change Manifest**:
+Produce and submit the Change Manifest prior to any code generation:
 
 ```markdown
 # Change Manifest: <feature name>
@@ -97,46 +139,42 @@ Before any code, produce a **Change Manifest**:
 8. Verification
 ```
 
-The human must approve the manifest before Stage 1.
+*(Halt generation. Await manifest approval before proceeding to Stage 1.)*
+
+---
 
 ### Stage 1 — Scaffold
 
-Create only empty structures:
+**Goal:** Create structural skeletons with zero inner logic or fields.
 
-- new files,
-- empty modules,
-- empty structs/classes/enums/traits/interfaces,
-- empty functions or methods,
-- type placeholders where unavoidable.
+**Allowed Content:**
+- New files, empty modules, empty structs/classes/enums/traits/interfaces.
+- Empty function signatures or placeholders where required to compile.
+- `DEV` comments on every entity.
 
-No fields. No logic. No call sites.
-
-Each item gets a development comment explaining its intended role.
+**Forbidden Content:** Fields, logic, call sites, or method bodies.
 
 End with:
-
 ```text
 SCAFFOLD MAP
 - <entity>: <purpose>
 - <entity>: <purpose>
-
-Awaiting approval for stage 1: scaffold.
 ```
+Followed by the standard **Review Footer**. `[HARD STOP]`
+
+---
 
 ### Stage 2 — State
 
-Add fields, constants, configuration, internal state, and data structures.
+**Goal:** Declare fields, state structures, constants, and storage configurations.
 
-Rules:
+**Allowed Content:**
+- Fields and data structures with explicit `DEV` comments.
+- Trivial constructors if required for compilation.
 
-- No methods except trivial constructors if required to compile.
-- No external behavior.
-- Every field must have a `DEV` comment.
-- Mark every field that will later require synchronization, validation,
-  persistence, migration, or cleanup.
+**Forbidden Content:** External behavior, non-trivial methods, or unapproved logic.
 
-End with a **State Map**:
-
+End with:
 ```text
 STATE MAP
 - Entity.field
@@ -147,32 +185,19 @@ STATE MAP
   - lifetime / cleanup
   - risks
 ```
+Followed by the standard **Review Footer**. `[HARD STOP]`
 
-Await approval.
+---
 
-### Stage 3 — Integration points
+### Stage 3 — Integration Points
 
-Identify where the new state or entities will connect to existing code.
+**Goal:** Wire dependencies and define connection points.
 
-Allowed changes:
+**Allowed Content:**
+- Imports, trait/interface declarations with empty bodies, registration points, dependency injection.
+- Commented-out future call sites (e.g., `// TODO(stage 5): enable after X exists`).
 
-- imports,
-- trait/interface implementations with empty bodies,
-- registration points,
-- dependency injection,
-- configuration wiring,
-- commented-out future call sites.
-
-If a call site cannot compile or execute yet, leave it commented:
-
-```rust
-// DEV: [stage 3/call-site]
-// TODO(stage 5): enable after SessionValidator::validate exists.
-// session_validator.validate(&request)?;
-```
-
-End with an **Integration Map**:
-
+End with:
 ```text
 INTEGRATION MAP
 - Existing component -> New component
@@ -181,24 +206,20 @@ INTEGRATION MAP
   - activation condition
   - current status: wired / commented / deferred
 ```
+Followed by the standard **Review Footer**. `[HARD STOP]`
 
-Await approval.
+---
 
 ### Stage 4 — Signatures
 
-Add function and method signatures.
+**Goal:** Define exact API contracts.
 
-Rules:
+**Allowed Content:**
+- Full function signatures with parameters and return types.
+- Doc comments for contracts, preconditions, and errors.
+- Method bodies containing strictly `todo!()`, `unimplemented!()`, or language equivalent.
 
-- Use precise parameter and return types.
-- Add doc comments describing contract, preconditions, errors, and side effects.
-- Bodies may only contain `unimplemented!()`, `todo!()`, `panic!("TODO")`,
-  `throw new Error("TODO")`, or the project’s equivalent.
-- Do not add temporary fake return values unless required to compile;
-  clearly mark them as temporary.
-
-End with a **Contract Map**:
-
+End with:
 ```text
 CONTRACT MAP
 - fn name(args) -> result
@@ -210,23 +231,21 @@ CONTRACT MAP
   - caller(s)
   - implementation stage
 ```
+Followed by the standard **Review Footer**. `[HARD STOP]`
 
-Await approval.
+---
 
-### Stage 5 — Call sites
+### Stage 5 — Call Sites
 
-Add the places that invoke the new functions or use the new state.
+**Goal:** Enable invocations of the new signatures in external call paths.
 
-Rules:
+**Allowed Content:**
+- Uncommenting and connecting Stage 3/4 call sites.
+- Adding minimal call-site wiring and explicit error handling TODOs.
 
-- Enable previously commented call sites only when their dependencies exist.
-- Keep each call site minimal.
-- Do not implement surrounding business logic.
-- If error handling is needed, add explicit TODO handling rather than
-  silently swallowing errors.
+**Forbidden Content:** Surrounding business logic implementation.
 
-End with a **Call-site Map**:
-
+End with:
 ```text
 CALL-SITE MAP
 - caller -> callee
@@ -236,48 +255,40 @@ CALL-SITE MAP
   - failure behavior
   - current status
 ```
+Followed by the standard **Review Footer**. `[HARD STOP]`
 
-Await approval.
+---
 
-### Stage 6 — Existing-type changes
+### Stage 6 — Existing-Type Changes
 
-Modify existing types only now:
+**Goal:** Modify existing codebase types to accommodate new features.
 
-- new methods,
-- new trait implementations,
-- changed visibility,
-- added variants,
-- changed fields,
-- interface adjustments.
+**Allowed Content:**
+- Added methods, trait implementations, field updates, or variant changes on existing types.
+- Every modification must include a `DEV: [stage 6/existing-change]` block detailing `Before`, `After`, `Why`, and `Blast radius`.
 
-Every modification needs:
-
+End with:
 ```text
-DEV: [stage 6/existing-change]
-Before: <old behavior or absence>
-After: <new behavior or responsibility>
-Why: <reason>
-Blast radius: <known affected callers>
+BLAST-RADIUS MAP
+- Modified Entity
+  - Changed aspect
+  - Impacted callers
+  - Mitigation / Verification path
 ```
+Followed by the standard **Review Footer**. `[HARD STOP]`
 
-End with a **Blast-radius Map**.
-
-Await approval.
+---
 
 ### Stage 7 — Bodies
 
-Implement function bodies one function or small cohesive group at a time.
+**Goal:** Implement actual inner function logic in cohesive, minimal blocks.
 
-Rules:
+**Rules:**
+- Implement one cohesive group at a time.
+- Stop and query the human if design ambiguities arise.
+- Propose a `REVISION` if previous stages prove flawed.
 
-- Start with the simplest dependency-free function.
-- Do not implement multiple unrelated bodies in one stage.
-- If a body requires a design decision, stop and ask.
-- If a body reveals a bad earlier decision, propose `REVISION`, do not patch silently.
-- Keep the diff focused.
-
-For each implemented body, report:
-
+For each body or group completed, present:
 ```text
 BODY REPORT
 - function
@@ -287,23 +298,19 @@ BODY REPORT
 - assumptions
 - follow-up TODOs
 ```
+Followed by the standard **Review Footer**. `[HARD STOP]`
 
-Await approval after each meaningful body or small group.
+---
 
 ### Stage 8 — Verification
 
-Only now propose verification:
+**Goal:** Execute, validate, and verify the overall changes.
 
-- compile,
-- lint,
-- run relevant tests,
-- manually exercise the flow,
-- inspect logs or generated artifacts.
-
-The agent must not claim success without evidence.
+**Allowed Content:**
+- Running compilation, linter passes, test suites, or manual verification steps.
+- Providing proof of execution.
 
 End with:
-
 ```text
 VERIFICATION REPORT
 - commands run
@@ -312,84 +319,29 @@ VERIFICATION REPORT
 - failures and interpretation
 - remaining risks
 ```
+Followed by the standard **Review Footer**. `[HARD STOP]`
 
-Await final approval.
+---
 
-## Review ritual
+## Commit Ritual
 
-After every stage, the agent must output:
+1. **Base Commit:** Create the feature base commit after approval of Stage 1 (or initial agreed block).
+2. **Fixup Commits:** Upon approval of each subsequent stage, commit changes as a fixup:
+   `git commit --fixup <base-sha>`
+   *Never mix multiple stages into one fixup.*
+3. **No Rewrites:** Do not amend previously created commits during active staging. Post-approval revisions append a new fixup commit.
+4. **Comment Cleanup:** `DEV:` markers remain during fixups and are removed during the final verification cleanup fixup.
+5. **Final Squash:** Perform `git rebase -i --autosquash` onto the base commit prior to PR opening.
+6. **Consent Boundary:** Confirm Git execution permissions before making commits.
 
-```text
-### Stage N: <name>
+---
 
-**What changed**
-- <file>: <change>
+## Completion Checklist
 
-**Why**
-- <reason>
-
-**What intentionally did not change**
-- <list>
-
-**Questions**
-- <question or "none">
-
-**Next stage**
-- <name and one-sentence description>
-
-Awaiting approval for stage N: <name>.
-```
-
-The human may reply with:
-
-- `approve` — proceed to the next stage.
-- `approve with notes: ...` — proceed, incorporating the notes.
-- `revise: ...` — remain in the same stage and fix the issue.
-- `replan: ...` — return to the Change Manifest.
-- `stop` — halt and summarize current state.
-
-## Commit ritual
-
-Stages are committed incrementally so each gate leaves a restorable point,
-but history stays squashable into one reviewable commit:
-
-1. After the first approved stage (or first approved group of stages), create
-   the **base commit** for the feature. Use the project's commit conventions.
-2. After every subsequent stage approval, commit that stage's diff as a NEW
-   fixup of the base commit — `git commit --fixup <base-sha>` — BEFORE starting
-   the next stage. Never mix two stages in one fixup.
-3. NEVER amend or rewrite already-created commits (neither the base nor any
-   fixup). Post-approval revisions to an earlier stage are committed as their
-   own additional fixup of the base commit. History only moves forward until
-   the final squash.
-4. Development comments (`DEV:` markers) may ride along in fixups; they are
-   stripped in the verification stage's final fixup.
-5. Before the PR, squash with `git rebase -i --autosquash` onto the base
-   commit unless the human asks to preserve the stage history.
-6. Never commit without the human's standing or explicit consent; the staged
-   commit ritual itself must be approved once per feature.
-
-## Entertainment mode
-
-To keep the process engaging, end each stage with a short **Developer’s Log**:
-
-```text
-> Stage 3 complete.
-> The skeleton now has nerves, but no muscles.
-> Next: give the functions their signatures and promises.
-```
-
-Keep it to one or two sentences. Do not let flavor text replace technical review.
-
-## Completion checklist
-
-Before declaring done, confirm:
-
-- [ ] Change Manifest matches the final implementation.
-- [ ] Every new entity has a purpose comment.
-- [ ] Every state field has an owner and lifecycle explanation.
-- [ ] Every TODO is assigned to a stage or explicitly deferred.
-- [ ] No commented-out code remains unless intentionally retained.
-- [ ] All call sites are either active or explicitly disabled with a reason.
-- [ ] Verification evidence exists.
-- [ ] The human has approved the final state.
+Before declaring the feature fully complete, confirm:
+- [ ] Change Manifest aligns with final implementation.
+- [ ] All new entities carry purpose documentation.
+- [ ] State fields include lifecycle and ownership explanations.
+- [ ] All TODOs are either completed or explicitly deferred.
+- [ ] No unneeded commented-out code remains.
+- [ ] Verification evidence is presented and human-approved.
